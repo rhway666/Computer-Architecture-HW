@@ -332,25 +332,35 @@ max_bf16:
     mv t1, a1      # t1 = bf16_b
 
     # 1. 比較符號位
-    srli t2, t0, 15  # 提取 t0 的符號位 -> t2
-    srli t3, t1, 15  # 提取 t1 的符號位 -> t3
+    srli t2, t0, 15  # t2 = sign of t0
+    srli t3, t1, 15  # t3 = sign of t1
 
     bne t2, t3, different_signs_max  # 如果符號位不同
 
-    # 2. 符號位相同，則比較剩餘部分（指數和尾數）
+    # 符號位相同
+    beqz t2, both_positive_max       # 如果符號位為 0（正數），進入正數比較
+
+    # 符號位為 1（負數），需要比較位模式較小的值
+    blt t0, t1, return_a_max         # 如果 t0 < t1，返回 t0
+    mv a0, t1                        # 否則返回 t1
+    ret
+
+both_positive_max:
+    # 符號位為 0（正數），正常比較
     bgt t0, t1, return_a_max         # 如果 t0 > t1，返回 t0
     mv a0, t1                        # 否則返回 t1
     ret
 
 different_signs_max:
-    # 3. 符號位不同，正數更大
-    beqz t2, return_a_max            # 如果 t2 是正數，返回 t0
+    # 符號位不同，正數較大
+    beqz t2, return_a_max            # 如果 t0 為正數，返回 t0
     mv a0, t1                        # 否則返回 t1
     ret
 
 return_a_max:
     mv a0, t0                        # 返回 t0
     ret
+
 
 min_bf16:
     # 比較兩個 BF16 數字，並返回較小的值
@@ -359,25 +369,35 @@ min_bf16:
     mv t1, a1      # t1 = bf16_b
 
     # 1. 比較符號位
-    srli t2, t0, 15  # 提取 t0 的符號位 -> t2
-    srli t3, t1, 15  # 提取 t1 的符號位 -> t3
+    srli t2, t0, 15  # t2 = sign of t0
+    srli t3, t1, 15  # t3 = sign of t1
 
-    bne t2, t3, different_signs  # 如果符號位不同
+    bne t2, t3, different_signs_min  # 如果符號位不同
 
-    # 2. 符號位相同，則比較剩餘部分（指數和尾數）
-    blt t0, t1, return_a         # 如果 t0 < t1，返回 t0
-    mv a0, t1                    # 否則返回 t1
+    # 符號位相同
+    beqz t2, both_positive_min       # 如果符號位為 0（正數），進入正數比較
+
+    # 符號位為 1（負數），需要比較位模式較大的值
+    bgt t0, t1, return_a_min         # 如果 t0 > t1，返回 t0
+    mv a0, t1                        # 否則返回 t1
     ret
 
-different_signs:
-    # 3. 符號位不同，負數更小
-    bnez t2, return_a            # 如果 t2 是負數，返回 t0
-    mv a0, t1                    # 否則返回 t1
+both_positive_min:
+    # 符號位為 0（正數），正常比較
+    blt t0, t1, return_a_min         # 如果 t0 < t1，返回 t0
+    mv a0, t1                        # 否則返回 t1
     ret
 
-return_a:
-    mv a0, t0                    # 返回 t0
+different_signs_min:
+    # 符號位不同，負數較小
+    bnez t2, return_a_min            # 如果 t0 為負數，返回 t0
+    mv a0, t1                        # 否則返回 t1
     ret
+
+return_a_min:
+    mv a0, t0                        # 返回 t0
+    ret
+
 
 compute_area:
     # Allocate stack space for saving registers
