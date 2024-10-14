@@ -9,13 +9,13 @@ fp32_to_bf16:
     # t1 is 0x7fffffff
     mv t0, a0
     li t1, 0x7fffffff
-    and t0, t0, t1
-    li t1, 0x7f800000
-    bgt t0, t1, handle_nan   # ? (u.as_bits & 0x7fffffff) > 0x7f800000
+    and t4, t0, t1
+    li t5, 0x7f800000
+    bgt t4, t5, handle_nan   # ? (u.as_bits & 0x7fffffff) > 0x7f800000
 
     # h = (u.as_bits + (0x7fff + ((u.as_bits >> 16) & 1))) >> 16
-    srli t2, t0, 16     # t2 = (u.as_bits >> 16) 
-    andi t2, t2, 1      # t2 = (u.as_bits >> 16) & 1)
+    srli t2, t0, 16     # t2 = (u.as_bits >> 16)
+    andi t2, t2, 1      # t2 = ((u.as_bits >> 16) & 1)
     li t3, 0x7fff
     add t2, t2, t3     # t2 = (0x7fff + ((u.as_bits >> 16) & 1))
     add t2, t2, t0     # t2 = (u.as_bits + (0x7fff + ((u.as_bits >> 16) & 1)))
@@ -44,8 +44,6 @@ bf16_to_fp32:
     mv a0, t0
     ret
 
-
-
 bf16_mul:
     addi sp, sp, -16         # allocate 4 s register
     sw s2, 0(sp)             # save s2
@@ -55,7 +53,6 @@ bf16_mul:
 
     mv t0, a0
     mv t1, a1
-
     # sign bit
     srli t2, t0, 15
     srli t3, t1, 15
@@ -76,14 +73,13 @@ bf16_mul:
     ori t4, t4, 0x80    # add the 1. back
     ori t5, t5, 0x80
     addi t6, x0, 0   # ans
-    addi s2, x0, 7   # iter 7 times
-    j frac_mul_loop
+    addi s2, x0, 8   # iter 7 times
 
 frac_mul_loop:
     beqz s2, end_frac_mul_loop
     andi s3, t4, 1   # lsb
     beqz s3, skip_add  # 0->skip add
-    add t6, s3, t5  #  
+    add t6, t6, t5  #  t6: mul result
 
 skip_add:
     slli t5, t5, 1 # baychensu
@@ -94,8 +90,9 @@ skip_add:
 end_frac_mul_loop:
     srli s4, t6, 15 #check highest bit = 1?
     andi s4, s4, 0x1 #highest bit in s4 可改進
-    beq s4, highest_bit_zero
+    beqz s4, highest_bit_zero
     srli s4, t6, 8 # highestbit is one 15~9 bit
+    addi t3, t3, 1 # exp + 1
     andi s4, s4, 0x7f #final frac in s4
     j combine_result
 
@@ -106,9 +103,10 @@ highest_bit_zero:
 
 combine_result:
     # signbit at t2, exp at t3, frac at s4
-    slli t2, t2, 8
+    
+    slli t2, t2, 15
+    slli t3, t3, 7
     or t3, t3, t2
-    slli t3, t3, 8
     or t3, t3, s4 #final result in t3 
     
     lw s2, 0(sp)               #  s2
@@ -121,7 +119,7 @@ combine_result:
 
 
 bf16_add:
-    addi sp, sp, -32         # allocate space for 4 saved registers (s2 - s6)
+    addi sp, sp, -36         # allocate space for 4 saved registers (s2 - s6)
     sw s2, 0(sp)             # save s2
     sw s3, 4(sp)             # save s3
     sw s4, 8(sp)             # save s4
@@ -130,7 +128,8 @@ bf16_add:
     sw s7, 20(sp)
     sw s8, 24(sp)
     sw s9, 28(sp)
-
+    sw s10, 32(sp)
+    
     mv t0, a0                # t0 = bf16_a
     mv t1, a1                # t1 = bf16_b
 
@@ -150,32 +149,80 @@ bf16_add:
     andi t5, t1, 0x7F        # t5 = b frac
     ori t5, t5, 0x80
 
-sign_check:
-    xor s6, t2, t3           # s6 = t2 ^ t3 (check sign bit same?)
-    beqz s6, add_mantissas   # branch if the same
-
-sub_mantissas:
+compare_exp:
     # align small frac
     bge s2, s3, align_b      
+    # align a frac
     sub t6, s3, s2           # t6 = exp_b - exp_a  (b > a)
     mv s6, s3                # s6 = copy big exp(b)
     mv s7, t3                # final sign bit in s7 same with b
     srl t4, t4, t6           # align a frac
-    sub t4, t5, t4           # frac_b -aligned_frac_a
-    j count_leading_zero
+    j sign_check
 
 align_b:
+    beq s2, s3, exp_equal
     sub t6, s2, s3           # t6 = exp_a - exp_b  (a > b)
     mv s6, s2                # s6 = copy big exp(a)
     mv s7, t2                # final sign bit in s7 same with a
     srl t5, t5, t6           # align b frac 
-    sub t4, t4, t5           # frac_b -aligned_frac_a
+    j sign_check
+
+
+exp_equal:
+    mv s6, s2                # s6 = copy big exp(a) or exp b is both ok
+    # compare frac
+    blt t4, t5, b_frac_bigger
+    beq t4, t5, same_num
+    # a > b
+    mv s7, t2                # final sign bit in s7 same with a
+    j sign_check
+
+same_num:
+    beq t2, t3 , add_name_num
+    
+    # sub_name_num   -> ans = 0
+    mv a0, x0   
+    lw s2, 0(sp)
+    lw s3, 4(sp)
+    lw s4, 8(sp)
+    lw s5, 12(sp)
+    lw s6, 16(sp)
+    lw s7, 20(sp)
+    lw s8, 24(sp)
+    lw s9, 28(sp)
+    lw s10, 32(sp)
+    addi sp, sp, 36
+    ret
+add_name_num:
+    mv s7, t2                # final sign bit in s7 same with a or b is both ok
+    j  sign_check
+    
+b_frac_bigger:
+    mv s7, t3                # final sign bit in s7 same with b
+    
+    # a frac in t4
+    # b frac in t5
+    # bigger exp in s6
+
+    
+sign_check:
+    xor s10, t2, t3           # s10 = t2 ^ t3 (check sign bit same?)
+    beqz s10, add_mantissas   # branch if the same
+
+sub_mantissas:
+    # align small frac
+    bge s2, s3, a_minus_b
+    sub t4, t5, t4           # frac_b -aligned_frac_a
+    j count_leading_zero
+
+a_minus_b:
+    sub t4, t4, t5           # frac_a -aligned_frac_b
 
 count_leading_zero:
     li s5, 0                 # s5 count highest bit
     li s9, 7                 # Loop from bit 7 to bit 0
 check_bit_loop:
-    srli t6, t4, s9          # Shift t4 right by s9 to check bit s9
+    srl t6, t4, s9          # Shift t4 right by s9 to check bit s9
     andi t6, t6, 0x1         # Isolate the bit
     bnez t6, found_highest_frac  # If the bit is 1, branch to found_highest_frac
     addi s5, s5, 1           # Increment shift count if bit is not 1
@@ -192,35 +239,38 @@ found_highest_frac:
     
     # Combine the final result
     # s7: sign bit, s6: exponent, t4: fraction
-    j combine_result
+    j combine_bit
+
+
+
 
 add_mantissas:
-    # andi t5, t0, 0x7F        # 提取 t0 的尾數部分
-    # ori t5, t5, 0x80         # 添加隱含的 1
-    # andi t6, t1, 0x7F        # 提取 t1 的尾數部分
-    # ori t6, t6, 0x80         # 添加隱含的 1
+    
+    # a frac in t4
+    # b frac in t5
+    # bigger exp in s6
 
-    add s4, t5, t6           # s4 = frac add
+    # t4 = frac a
+    add s4, t4, t5           # s4 = frac add 
     mv s7, t2           #final sign bit in s7
 
     # Step 4: 正規化
     srli s5, s4, 8           # check 9bit
     bnez s5, normalize_right
-    j combine_result
+    j combine_bit
 
 normalize_right:
-    srli t4, s4, 1            # frac shift
+    srli s4, s4, 1            # frac shift
     addi s6, s6, 1           # exp  加 1
 
-# Step 5: 合併最終結果
-combine_result:
+combine_bit:
     # s7: sign bit, s6: exponent, t4: fraction
     # sign bit is t2 (use the sign of larger exponent value)
     slli s7, s7, 15          # 將符號位移到正確的位置
     slli s6, s6, 7           # 將指數移到正確的位置
-    andi t4, t4, 0x7F        # 保留尾數的 7 位
+    andi s4, s4, 0x7F        # 保留尾數的 7 位
     or t3, s7, s6            # 合併符號和指數
-    or t3, t3, t4            # 合併尾數，得到最終結果
+    or a0, t3, s4            # 合併尾數，得到最終結果放入 a0
 
     # 恢復保存的寄存器
     lw s2, 0(sp)
@@ -231,8 +281,8 @@ combine_result:
     lw s7, 20(sp)
     lw s8, 24(sp)
     lw s9, 28(sp)
-    addi sp, sp, 32
-    mv a0, t3                # 返回結果
+    lw s10, 32(sp)
+    addi sp, sp, 36
     ret
 
 bf16_sub:
@@ -246,84 +296,6 @@ bf16_sub:
     lw s10, 0(sp)
     addi sp, sp, 4 
     ret
-
-# bf16_sub:
-#     addi sp, sp, -16         # allocate space for 4 saved registers (s2 - s5)
-#     sw s2, 0(sp)             # save s2
-#     sw s3, 4(sp)             # save s3
-#     sw s4, 8(sp)             # save s4
-#     sw s5, 12(sp)            # save s5
-
-#     mv t0, a0                # t0 = bf16_a
-#     mv t1, a1                # t1 = bf16_b
-
-#     # Step 1: 符號位處理
-#     srli t2, t0, 15          # 符號位 t0 -> t2
-#     srli t3, t1, 15          # 符號位 t1 -> t3
-#     xori t2, t2, 1            # 反轉 t1 的符號位，作為減法的符號
-
-#     # Step 2: 指數處理和對齊
-#     srli s2, t0, 7           # 提取 t0 的指數位到 s2
-#     andi s2, s2, 0xFF        # 保留指數位
-#     srli s3, t1, 7           # 提取 t1 的指數位到 s3
-#     andi s3, s3, 0xFF        # 保留指數位
-
-#     # 比較指數，對齊尾數
-#     bge s2, s3, align_b_sub
-#     sub t4, s3, s2           # t4 = 指數差
-#     srl t0, t0, t4           # 將 t0 的尾數右移 t4 位以對齊
-#     mv s5, s3                # 更新指數為較大的 s3
-#     j sub_mantissas
-
-# align_b_sub:
-#     sub t4, s2, s3           # t4 = 指數差
-#     srl t1, t1, t4           # 將 t1 的尾數右移 t4 位以對齊
-#     mv s5, s2                # 更新指數為較大的 s2
-
-# # Step 3: 尾數相減
-# sub_mantissas:
-#     andi t5, t0, 0x7F        # 提取 t0 的尾數部分
-#     ori t5, t5, 0x80         # 添加隱含的 1
-#     andi t6, t1, 0x7F        # 提取 t1 的尾數部分
-#     ori t6, t6, 0x80         # 添加隱含的 1
-
-#     sub s4, t5, t6           # s4 = 尾數相減
-
-#     # Step 4: 正規化
-#     bltz s4, negate_result   # 如果結果為負，進行取反處理
-#     j normalize_sub_result
-
-# negate_result:
-#     neg s4, s4               # 取反尾數
-#     xor t2, t2, 1            # 變更符號位
-
-# normalize_sub_result:
-#     # 正規化減法結果
-#     srli t4, s4, 8           # 檢查是否需要正規化
-#     bnez t4, normalize_right_sub
-#     j combine_sub_result
-
-# normalize_right_sub:
-#     srl s4, s4, 1            # 右移尾數
-#     addi s5, s5, 1           # 指數加 1
-
-# # Step 5: 合併最終結果
-# combine_sub_result:
-#     # sign bit is t2
-#     slli t2, t2, 15          # 將符號位移到正確的位置
-#     slli s5, s5, 7           # 將指數移到正確的位置
-#     andi s4, s4, 0x7F        # 保留尾數的 7 位
-#     or t3, t2, s5            # 合併符號和指數
-#     or t3, t3, s4            # 合併尾數，得到最終結果
-
-#     # 恢復保存的寄存器
-#     lw s2, 0(sp)
-#     lw s3, 4(sp)
-#     lw s4, 8(sp)
-#     lw s5, 12(sp)
-#     addi sp, sp, 16
-#     mv a0, t3                # 返回結果
-#     ret
 
 max_bf16:
     # 比較兩個 BF16 數字，並返回較大的值
