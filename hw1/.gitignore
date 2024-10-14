@@ -3,14 +3,14 @@
 
 # 保留需要的檔案
 !/.gitignore
-!hw1/recnew.c
-!hw1/rec_new.s
-!hw1/simple_rectangle.c
-!hw1/simple_rectangle.s
+!recnew.c
+!rec_new.s
+!simple_rectangle.c
+!simple_rectangle.s
 
 # 保留 function_test 目錄下的檔案
-!hw1/function_test/
-!hw1/function_test/add.c
-!hw1/function_test/bf16multest.c
-!hw1/function_test/test_bf16_add.s
-!hw1/function_test/test_fp32_to_fp16.s
+!function_test/
+!function_test/add.c
+!function_test/bf16multest.c
+!function_test/test_bf16_add.s
+!function_test/test_fp32_to_fp16.s
