@@ -286,15 +286,17 @@ combine_bit:
     ret
 
 bf16_sub:
-    addi sp, sp, -4         # allocate space for 4 saved registers (s10)
+    addi sp, sp, -8         # allocate space for 4 saved registers (s10)
     sw s10, 0(sp)             # save s2
+    sw ra, 4(sp)
 
     li s10, 0x8000
     xor a1, a1, s10
     jal ra, bf16_add
 
     lw s10, 0(sp)
-    addi sp, sp, 4 
+    lw ra, 4(sp)
+    addi sp, sp, 8 
     ret
 
 max_bf16:

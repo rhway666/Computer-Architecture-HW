@@ -69,6 +69,8 @@ float compute_area(float ax1, float ay1, float ax2, float ay2,
         boverlap_area = x_overlap * y_overlap;
     }
 
+    printf("%x %x %x \n",barea1, barea2,boverlap_area );
+
     // 總面積 = 矩形1面積 + 矩形2面積 - 重疊部分面積
     bf16_t btotal_area = barea1 + barea2 - boverlap_area;
 
@@ -78,11 +80,16 @@ float compute_area(float ax1, float ay1, float ax2, float ay2,
 
 int main() {
     // 示例測試，使用單精度浮點數表示座標
-    float ax1 = -3.0f, ay1 = 0.0f, ax2 = 3.0f, ay2 = 4.0f;
-    float bx1 = 0.0f, by1 = -1.0f, bx2 = 9.0f, by2 = 2.0f;
+    float ax1 = -8.0f, ay1 = -8.0f, ax2 = 8.0f, ay2 = 8.0f;
+    float bx1 = -4.0f, by1 = -4.0f, bx2 = 4.0f, by2 = 4.0f;
+
+    
 
     float result = compute_area(ax1, ay1, ax2, ay2, bx1, by1, bx2, by2);
     printf("Total Area: %.2f\n", result);  // 輸出：45.00
+    printf("Total Area: %x \n", result);  // 輸出：45.00
+
+
 
     return 0;
 }
