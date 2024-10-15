@@ -211,13 +211,43 @@ sign_check:
 
 sub_mantissas:
     # align small frac
-    bge s2, s3, a_minus_b
+    bge s2, s3, a_minus_b    # s2>=s3
     sub t4, t5, t4           # frac_b -aligned_frac_a
     j count_leading_zero
 
 a_minus_b:
+    beq s2, s3, frac_minus_on_same_exp
     sub t4, t4, t5           # frac_a -aligned_frac_b
+    j count_leading_zero
+    
+frac_minus_on_same_exp:
+    bge t4, t5  frac_a_greater  # a>=b
+    # a < b
+    sub t4, t5, t4           # frac_b -aligned_frac_a
+    j count_leading_zero
+    
+frac_a_greater:
+    beq t4, t5, zero    # a = b
+    # a > b
+    sub t4, t4, t5           # frac_a -aligned_frac_b
+    j count_leading_zero
 
+zero:
+        # sub_name_num   -> ans = 0
+    mv a0, x0   
+    lw s2, 0(sp)
+    lw s3, 4(sp)
+    lw s4, 8(sp)
+    lw s5, 12(sp)
+    lw s6, 16(sp)
+    lw s7, 20(sp)
+    lw s8, 24(sp)
+    lw s9, 28(sp)
+    lw s10, 32(sp)
+    addi sp, sp, 36
+    ret
+    
+    
 count_leading_zero:
     li s5, 0                 # s5 count highest bit
     li s9, 7                 # Loop from bit 7 to bit 0
@@ -236,7 +266,7 @@ found_highest_frac:
     # t4 frac 
     sub s6, s6, s5
     sll t4, t4, s5
-    
+    mv s4, t4    # move final frac to s4
     # Combine the final result
     # s7: sign bit, s6: exponent, t4: fraction
     j combine_bit

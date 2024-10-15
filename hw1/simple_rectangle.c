@@ -72,8 +72,9 @@ float compute_area(float ax1, float ay1, float ax2, float ay2) {
 
 
     bf16_t width = bf16_sub(bax2, bax1);
+    printf("width in bf16 = %x \n", width);
     bf16_t highet = bf16_sub(bay2, bay1);
-
+    printf("highet in bf16 = %x \n", highet);
     bf16_t area = bf16_mul(width, highet);
 
     printf("area in bf16 = %x \n", area);
@@ -108,7 +109,7 @@ int main() {
 
 
 
-    float cx1 = -4.0f, cy1 = -4.0f, cx2 = 4.0f, cy2 = 4.0f;
+    float cx1 = 4.1f, cy1 = 5.34f, cx2 = 6.22f, cy2 = 9.5f;
     print_fp32_hex(cx1, cy1, cx2, cy2); 
     float result3 = compute_area(cx1, cy1, cx2, cy2);
     printf("Total Area in fp32 : %.6f\n", result3);  

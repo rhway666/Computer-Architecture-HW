@@ -82,8 +82,8 @@ void demonstrate_bf16_operations(float a, float b) {
 }
 
 int main() {
-    float a = 8.0f;
-    float b = 7.0f;
+    float a = 17.6666f;
+    float b = -4.1234f;
     demonstrate_bf16_operations(a, b);
     return 0;
 }
